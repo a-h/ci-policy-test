@@ -17,6 +17,7 @@ Resources:
           - Sid: AllowIAMPolicySimulator
             Effect: Allow
             Action:
+              - iam:SimulatePrincipalPolicy
               - iam:GetGroupPolicy
               - iam:GetPolicy
               - iam:GetPolicyVersion
