@@ -1,0 +1,57 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  User:
+    Type: AWS::IAM::User
+    Properties: 
+      PermissionsBoundary: !Ref PermissionBoundary
+  PermissionBoundary:
+    Type: "AWS::IAM::ManagedPolicy"
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: DenyPermBoundaryIAMPolicyAlteration
+            Effect: Deny
+            Action:
+              - iam:DeletePolicy
+              - iam:DeletePolicyVersion
+              - iam:CreatePolicyVersion
+              - iam:SetDefaultPolicyVersion
+            Resource:
+              - arn:aws:iam:::policy/global-ci-serverless-permission-boundary
+          - Sid: DenyRemovalOfPermBoundaryFromAnyUserOrRole
+            Effect: Deny
+            Action:
+              - iam:DeleteUserPermissionsBoundary
+              - iam:DeleteRolePermissionsBoundary
+            Resource:
+              - arn:aws:iam:::user/*
+              - arn:aws:iam:::role/*
+            Condition:
+              StringEquals:
+                iam:PermissionsBoundary: arn:aws:iam:::policy/global-ci-serverless-permission-boundary
+          - Sid: DenyAccessIfRequiredPermBoundaryIsNotBeingApplied
+            Effect: Deny
+            Action:
+              - iam:PutUserPermissionsBoundary
+              - iam:PutRolePermissionsBoundary
+            Resource:
+              - arn:aws:iam:::user/*
+              - arn:aws:iam:::role/*
+            Condition:
+              StringNotEquals:
+                iam:PermissionsBoundary: arn:aws:iam:::policy/global-ci-serverless-permission-boundary
+          - Sid: AllowRoleCreationWithPermBoundary
+            Effect: Allow
+            Action:
+              - iam:CreateRole
+            Resource:
+              - arn:aws:iam:::role/*
+            Condition:
+              StringNotEquals:
+                iam:PermissionsBoundary: arn:aws:iam:::policy/global-ci-serverless-permission-boundary
+Outputs:
+  UserName:
+    Description: The username of the CI user.
+    Value: !Ref User
