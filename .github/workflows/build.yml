@@ -20,6 +20,5 @@ jobs:
     - name: Build
       run: go build -v ./...
 
-    - name: Test
-      run: go test -v ./...
-
+    - name: Run
+      run: ./ci-policy-test 
