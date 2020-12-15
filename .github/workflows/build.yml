@@ -1,7 +1,5 @@
 name: Build
 
-environment: personal
-
 on:
   push:
     branches: [ master ]
@@ -10,6 +8,7 @@ on:
 
 jobs:
   build:
+    environment: personal
     name: Build
     runs-on: ubuntu-latest
     steps:
