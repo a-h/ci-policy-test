@@ -1,12 +1,36 @@
 ---
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Resources:
   User:
     Type: AWS::IAM::User
-    Properties: 
+    Properties:
       PermissionsBoundary: !Ref PermissionBoundary
+  AllowPolicySimulator:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Allows user of the IAM Policy Simulator.
+      Users:
+        - !Ref User
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: AllowIAMPolicySimulator
+            Effect: Allow
+            Action:
+              - iam:GetGroupPolicy
+              - iam:GetPolicy
+              - iam:GetPolicyVersion
+              - iam:GetUser
+              - iam:GetUserPolicy
+              - iam:ListAttachedUserPolicies
+              - iam:ListGroupsForUser
+              - iam:ListGroupPolicies
+              - iam:ListUserPolicies
+              - iam:ListUsers
+            Resource: 
+              - "*"
   PermissionBoundary:
-    Type: "AWS::IAM::ManagedPolicy"
+    Type: AWS::IAM::ManagedPolicy
     Properties:
       PolicyDocument:
         Version: 2012-10-17
