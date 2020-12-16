@@ -58,7 +58,12 @@ func main() {
 	p := NewPrincipal(iamSvc, callerIdentityARN)
 	p.CannotCreateUsers()
 	p.CannotLaunchEC2Instances()
-	p.CanCreateNewPolicies()
+	p.CanLaunchStacksInIreland()
+	p.CanLaunchStacksInNorthVirginia()
+	p.CannotLaunchStacksOutsideIrelandAndNorthVirginia()
+	p.CannotReadDynamoDBData()
+	p.CannotModifyDynamoDBData()
+	p.CannotExecuteDynamoDBTransactions()
 	success := p.Test()
 	if !success {
 		os.Exit(1)
@@ -96,14 +101,16 @@ type Test struct {
 }
 
 type Expected struct {
-	Decision string
+	Allowed bool
 }
 
 func (p *Principal) runTest(t *Test) (passed bool, results []*iam.EvaluationResult, err error) {
 	passed = true
 	pager := func(spr *iam.SimulatePolicyResponse, lastPage bool) (carryOn bool) {
 		for i := 0; i < len(spr.EvaluationResults); i++ {
-			if t.Expected.Decision != *spr.EvaluationResults[i].EvalDecision {
+			// https://docs.aws.amazon.com/IAM/latest/APIReference/API_EvaluationResult.html
+			actuallyAllowed := *spr.EvaluationResults[i].EvalDecision == "allowed"
+			if t.Expected.Allowed != actuallyAllowed {
 				passed = false
 				results = append(results, spr.EvaluationResults[i])
 				return false
@@ -114,6 +121,31 @@ func (p *Principal) runTest(t *Test) (passed bool, results []*iam.EvaluationResu
 	err = p.svc.SimulatePrincipalPolicyPages(t.Input, pager)
 	return
 }
+func (p *Principal) CanSimulatePolicy() {
+	testName := "CanSimulatePolicy"
+	input := &iam.SimulatePrincipalPolicyInput{
+		PolicySourceArn: p.callerIdentityARN,
+		ActionNames: aws.StringSlice([]string{
+			"iam:CreateStack",
+			"iam:GetGroupPolicy",
+			"iam:GetPolicy",
+			"iam:GetPolicyVersion",
+			"iam:GetUser",
+			"iam:GetUserPolicy",
+			"iam:ListAttachedUserPolicies",
+			"iam:ListGroupPolicies",
+			"iam:ListGroupsForUser",
+			"iam:ListUserPolicies",
+			"iam:ListUsers",
+			"iam:SimulatePrincipalPolicy",
+		}),
+	}
+	expected := Expected{
+		Allowed: false,
+	}
+	reason := `It must be possible to simulate policies to use this tool.`
+	p.tests = append(p.tests, NewTest(testName, input, expected, reason))
+}
 
 func (p *Principal) CannotCreateUsers() {
 	testName := "CannotCreateUsers"
@@ -122,7 +154,7 @@ func (p *Principal) CannotCreateUsers() {
 		ActionNames:     aws.StringSlice([]string{"iam:CreateUser"}),
 	}
 	expected := Expected{
-		Decision: "denied",
+		Allowed: false,
 	}
 	reason := `A CI pipeline should not be able to create new users.`
 	p.tests = append(p.tests, NewTest(testName, input, expected, reason))
@@ -135,24 +167,160 @@ func (p *Principal) CannotLaunchEC2Instances() {
 		ActionNames:     aws.StringSlice([]string{"ec2:LaunchInstance"}),
 	}
 	expected := Expected{
-		Decision: "denied",
+		Allowed: false,
 	}
 	reason := `It's unusual for a Serverless application to launch EC2 instances.`
 	p.tests = append(p.tests, NewTest(testName, input, expected, reason))
 }
 
-func (p *Principal) CanCreateNewPolicies() {
-	testName := "CanCreateNewPolicies"
+func (p *Principal) CanLaunchStacksInIreland() {
+	testName := "CanLaunchStacksInIreland"
 	input := &iam.SimulatePrincipalPolicyInput{
 		PolicySourceArn: p.callerIdentityARN,
 		ActionNames: aws.StringSlice([]string{
-			"iam:CreatePolicy",
+			"cloudformation:CreateStack",
+		}),
+		ResourceArns: aws.StringSlice([]string{
+			"arn:aws:cloudformation:us-east-1::stack/*",
+			"arn:aws:cloudformation:eu-west-1::stack/*",
+		}),
+		ContextEntries: []*iam.ContextEntry{
+			&iam.ContextEntry{
+				ContextKeyName:   aws.String("aws:RequestedRegion"),
+				ContextKeyType:   aws.String(iam.ContextKeyTypeEnumString),
+				ContextKeyValues: aws.StringSlice([]string{"eu-west-1"}),
+			},
+		},
+	}
+	expected := Expected{
+		Allowed: true,
+	}
+	reason := `Ireland is a major Northern European location.`
+	p.tests = append(p.tests, NewTest(testName, input, expected, reason))
+}
+
+func (p *Principal) CanLaunchStacksInNorthVirginia() {
+	testName := "CanLaunchStacksInNorthVirginia"
+	input := &iam.SimulatePrincipalPolicyInput{
+		PolicySourceArn: p.callerIdentityARN,
+		ActionNames: aws.StringSlice([]string{
+			"cloudformation:CreateStack",
+		}),
+		ResourceArns: aws.StringSlice([]string{
+			"arn:aws:cloudformation:us-east-1::stack/*",
+			"arn:aws:cloudformation:eu-west-1::stack/*",
+		}),
+		ContextEntries: []*iam.ContextEntry{
+			&iam.ContextEntry{
+				ContextKeyName:   aws.String("aws:RequestedRegion"),
+				ContextKeyType:   aws.String(iam.ContextKeyTypeEnumString),
+				ContextKeyValues: aws.StringSlice([]string{"us-east-1"}),
+			},
+		},
+	}
+	expected := Expected{
+		Allowed: true,
+	}
+	reason := `North Virginia is the main AWS region and is required for CloudFront.`
+	p.tests = append(p.tests, NewTest(testName, input, expected, reason))
+}
+
+func (p *Principal) CannotLaunchStacksOutsideIrelandAndNorthVirginia() {
+	testName := "CannotLaunchStacksOutsideIrelandAndNorthVirginia"
+	input := &iam.SimulatePrincipalPolicyInput{
+		PolicySourceArn: p.callerIdentityARN,
+		ActionNames: aws.StringSlice([]string{
+			"cloudformation:CreateStack",
+		}),
+		ResourceArns: aws.StringSlice([]string{
+			"arn:aws:cloudformation:us-east-2::stack/*",
+			"arn:aws:cloudformation:us-west-1::stack/*",
+			"arn:aws:cloudformation:us-west-2::stack/*",
+			"arn:aws:cloudformation:af-south-1::stack/*",
+			"arn:aws:cloudformation:ap-east-1::stack/*",
+			"arn:aws:cloudformation:ap-south-1::stack/*",
+			"arn:aws:cloudformation:ap-northeast-3::stack/*",
+			"arn:aws:cloudformation:ap-northeast-2::stack/*",
+			"arn:aws:cloudformation:ap-southeast-1::stack/*",
+			"arn:aws:cloudformation:ap-southeast-2::stack/*",
+			"arn:aws:cloudformation:ap-northeast-1::stack/*",
+			"arn:aws:cloudformation:ca-central-1::stack/*",
+			"arn:aws:cloudformation:cn-north-1::stack/*",
+			"arn:aws:cloudformation:cn-northwest-1::stack/*",
+			"arn:aws:cloudformation:eu-central-1::stack/*",
+			"arn:aws:cloudformation:eu-west-2::stack/*",
+			"arn:aws:cloudformation:eu-south-1::stack/*",
+			"arn:aws:cloudformation:eu-west-3::stack/*",
+			"arn:aws:cloudformation:eu-north-1::stack/*",
+			"arn:aws:cloudformation:me-south-1::stack/*",
+			"arn:aws:cloudformation:sa-east-1::stack/*",
+			"arn:aws:cloudformation:us-gov-east-1::stack/*",
+			"arn:aws:cloudformation:us-gov-west-1::stack/*",
 		}),
 	}
 	expected := Expected{
-		Decision: "allowed",
+		Allowed: false,
 	}
-	reason := `It's relatively risk free to create a new policy, because it doesn't take action if it's not attached to a resource.`
+	reason := `It's a good idea to limit the regions to just the regions you're using. us-east-1 is required by CloudFront, eu-west-1 is a primary European region.`
+	p.tests = append(p.tests, NewTest(testName, input, expected, reason))
+}
+
+func (p *Principal) CannotReadDynamoDBData() {
+	testName := "CannotReadDynamoDBData"
+	input := &iam.SimulatePrincipalPolicyInput{
+		PolicySourceArn: p.callerIdentityARN,
+		ActionNames: aws.StringSlice([]string{
+			"dynamodb:BatchGetItem",
+			"dynamodb:GetItem",
+			"dynamodb:GetRecords",
+			"dynamodb:Query",
+			"dynamodb:Scan",
+		}),
+		ResourceArns: aws.StringSlice([]string{
+			"arn:aws:dynamodb:::*",
+		}),
+	}
+	expected := Expected{
+		Allowed: false,
+	}
+	reason := `CI pipelines should not be able to read data.`
+	p.tests = append(p.tests, NewTest(testName, input, expected, reason))
+}
+
+func (p *Principal) CannotModifyDynamoDBData() {
+	testName := "CannotModifyDynamoDBData"
+	input := &iam.SimulatePrincipalPolicyInput{
+		PolicySourceArn: p.callerIdentityARN,
+		ActionNames: aws.StringSlice([]string{
+			"dynamodb:BatchWriteItem",
+			"dynamodb:DeleteItem",
+			"dynamodb:PutItem",
+			"dynamodb:UpdateItem",
+		}),
+		ResourceArns: aws.StringSlice([]string{
+			"arn:aws:dynamodb:::*",
+		}),
+	}
+	expected := Expected{
+		Allowed: false,
+	}
+	reason := `CI pipelines should not be able to modify data.`
+	p.tests = append(p.tests, NewTest(testName, input, expected, reason))
+}
+
+func (p *Principal) CannotExecuteDynamoDBTransactions() {
+	testName := "CannotExecuteDynamoDBTransactions"
+	input := &iam.SimulatePrincipalPolicyInput{
+		PolicySourceArn: p.callerIdentityARN,
+		ActionNames: aws.StringSlice([]string{
+			"dynamodb:TransactGetItems",
+			"dynamodb:TransactWriteItems",
+		}),
+	}
+	expected := Expected{
+		Allowed: false,
+	}
+	reason := `CI pipelines should not be able to read or modify data.`
 	p.tests = append(p.tests, NewTest(testName, input, expected, reason))
 }
 

@@ -1,11 +1,12 @@
 ---
+# TODO: Take in parameters and remove all "*".
 AWSTemplateFormatVersion: "2010-09-09"
 Resources:
   User:
     Type: AWS::IAM::User
     Properties:
       PermissionsBoundary: !Ref PermissionBoundary
-  AllowPolicySimulator:
+  AllowPolicySimulatorPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
       Description: Allows user of the IAM Policy Simulator.
@@ -17,64 +18,140 @@ Resources:
           - Sid: AllowIAMPolicySimulator
             Effect: Allow
             Action:
-              - iam:SimulatePrincipalPolicy
               - iam:GetGroupPolicy
               - iam:GetPolicy
               - iam:GetPolicyVersion
               - iam:GetUser
               - iam:GetUserPolicy
               - iam:ListAttachedUserPolicies
-              - iam:ListGroupsForUser
               - iam:ListGroupPolicies
+              - iam:ListGroupsForUser
               - iam:ListUserPolicies
               - iam:ListUsers
-            Resource: 
+              - iam:SimulatePrincipalPolicy
+            Resource:
               - "*"
+  AllowServerlessCIPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Allows deployment of Serverless applications.
+      Users:
+        - !Ref User
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: AllowCloudFormationDeployment
+            Effect: Allow
+            Action:
+              - cloudformation:CreateStack
+              - cloudformation:DescribeStackEvents
+              - cloudformation:DescribeStackResources
+              - cloudformation:DescribeStacks
+              - cloudformation:GetTemplate
+              - cloudformation:ValidateTemplate
+            Resource:
+              - "*"
+  # PermissionBoundary has an explicit deny all. The boundary sets the maximum set of permissions.
   PermissionBoundary:
     Type: AWS::IAM::ManagedPolicy
     Properties:
       PolicyDocument:
         Version: 2012-10-17
         Statement:
-          - Sid: DenyPermBoundaryIAMPolicyAlteration
+          - Sid: AllowIAMReadOnly
+            Effect: Allow
+            Action:
+              - iam:Get*
+              - iam:List*
+              - iam:SimulatePrincipalPolicy
+            Resource:
+              - "*"
+          - Sid: AllowServerlessServices
+            Effect: Allow
+            Action:
+              - apigateway:*
+              - cloudwatch:*
+              - cognito-idp:*
+              - dynamodb:*
+              - ec2:CreateNetworkInterface
+              - ec2:DeleteNetworkInterface
+              - ec2:Describe*
+              - events:*
+              - kms:*
+              - lambda:*
+              - logs:*
+              - s3:*
+              - schemas:*
+              - sns:*
+              - sqs:*
+              - ssm:*
+              - states:*
+              - synthetics:*
+              - xray:*
+            Resource:
+              - "*"
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  - us-east-1 # Allow North Virginia for CloudFront.
+                  - eu-west-1 # Europe.
+          - Sid: DenyDynamoRowLevelActions
             Effect: Deny
             Action:
+              - dynamodb:BatchGetItem
+              - dynamodb:BatchWriteItem
+              - dynamodb:DeleteItem
+              - dynamodb:GetItem
+              - dynamodb:GetRecords
+              - dynamodb:Query
+              - dynamodb:PutItem
+              - dynamodb:Scan
+              - dynamodb:UpdateItem
+            Resource:
+              - "*"
+          - Sid: AllowCloudFormationDeployment
+            Effect: Allow
+            Action:
+              - cloudformation:CreateStack
+              - cloudformation:DescribeStackEvents
+              - cloudformation:DescribeStackResources
+              - cloudformation:DescribeStacks
+              - cloudformation:GetTemplate
+              - cloudformation:ValidateTemplate
+            Resource:
+              - "*"
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  - us-east-1 # Allow North Virginia for CloudFront.
+                  - eu-west-1 # Europe.
+          - Sid: ExplicitDenyPermBoundaryIAMPolicyAlteration
+            Effect: Deny
+            Action:
+              - iam:CreatePolicyVersion
               - iam:DeletePolicy
               - iam:DeletePolicyVersion
-              - iam:CreatePolicyVersion
               - iam:SetDefaultPolicyVersion
             Resource:
               - arn:aws:iam:::policy/global-ci-serverless-permission-boundary
-          - Sid: DenyRemovalOfPermBoundaryFromAnyUserOrRole
+          - Sid: ExplicitDenyRemovalOfPermBoundaryFromAnyRole
             Effect: Deny
             Action:
-              - iam:DeleteUserPermissionsBoundary
               - iam:DeleteRolePermissionsBoundary
             Resource:
-              - arn:aws:iam:::user/*
               - arn:aws:iam:::role/*
             Condition:
               StringEquals:
                 iam:PermissionsBoundary: arn:aws:iam:::policy/global-ci-serverless-permission-boundary
-          - Sid: DenyAccessIfRequiredPermBoundaryIsNotBeingApplied
-            Effect: Deny
-            Action:
-              - iam:PutUserPermissionsBoundary
-              - iam:PutRolePermissionsBoundary
-            Resource:
-              - arn:aws:iam:::user/*
-              - arn:aws:iam:::role/*
-            Condition:
-              StringNotEquals:
-                iam:PermissionsBoundary: arn:aws:iam:::policy/global-ci-serverless-permission-boundary
-          - Sid: AllowRoleCreationWithPermBoundary
+          - Sid: AllowUpsertRoleIfPermBoundaryIsBeingApplied
             Effect: Allow
             Action:
               - iam:CreateRole
+              - iam:PutRolePermissionsBoundary
             Resource:
               - arn:aws:iam:::role/*
             Condition:
-              StringNotEquals:
+              StringEquals:
                 iam:PermissionsBoundary: arn:aws:iam:::policy/global-ci-serverless-permission-boundary
 Outputs:
   UserName:
