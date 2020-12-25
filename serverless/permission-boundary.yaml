@@ -1,5 +1,7 @@
 ---
 # TODO: Take in parameters and remove all "*".
+# TODO: There shouldn't be a global CI boundary, we want to have a boundary per application team.
+# Naming standard: <application>-<environment>-<resource-name>
 AWSTemplateFormatVersion: "2010-09-09"
 Resources:
   User:
@@ -28,6 +30,7 @@ Resources:
               - iam:ListGroupsForUser
               - iam:ListUserPolicies
               - iam:ListUsers
+              - iam:ListPolicies
               - iam:SimulatePrincipalPolicy
             Resource:
               - "*"
@@ -48,13 +51,105 @@ Resources:
               - cloudformation:DescribeStackResources
               - cloudformation:DescribeStacks
               - cloudformation:GetTemplate
+              - cloudformation:ListStackResources
+              - cloudformation:UpdateStack
               - cloudformation:ValidateTemplate
+              - cloudformation:DeleteStack
             Resource:
               - "*"
+          - Sid: AllowS3ListBucketOnServerlessBucket
+            Effect: Allow
+            Action:
+              - s3:GetBucketLocation
+              - s3:CreateBucket
+              - s3:DeleteBucket
+              - s3:ListBucket
+              - s3:GetBucketPolicy
+              - s3:PutBucketPolicy
+              - s3:ListBucketVersions
+              - s3:PutAccelerateConfiguration
+              - s3:GetEncryptionConfiguration
+              - s3:PutEncryptionConfiguration
+              - s3:DeleteBucketPolic
+              - s3:ListBucket
+            Resource:
+              - !Join ["", ["arn:aws:s3:::", !Ref ServerlessDeploymentBucket]]
+          - Sid: AllowS3PutObjectOnServerlessBucket
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+            Resource:
+              - !Join [
+                  "",
+                  ["arn:aws:s3:::", !Ref ServerlessDeploymentBucket, "/*"],
+                ]
+          - Sid: AllowLambdaCreation
+            Effect: Allow
+            Action:
+              - lambda:Get*
+              - lambda:List*
+              - lambda:CreateFunction
+              - lambda:DeleteFunction
+            Resource:
+              - "*"
+          - Sid: AllowLambdaIAMRoleCreation
+            Effect: Allow
+            Action:
+              - iam:GetRole
+              - iam:CreateRole
+              - iam:PutRolePolicy
+              - iam:DeleteRolePolicy
+              - iam:DeleteRole
+            Resource:
+              - "*" #TODO: Update this to be reduced to the Lambda role.
+          - Sid: AllowPassRoleToLambda
+            Effect: Allow
+            Action:
+              - iam:PassRole
+            Resource:
+              - arn:aws:iam:::role/*
+            #Condition:
+              #StringEquals:
+                #iam:PassedToService: lambda.amazonaws.com
+          - Sid: AllowAddPermission
+            Effect: Allow
+            Action:
+              - lambda:AddPermission
+              - lambda:CreateAlias
+              - lambda:DeleteFunction
+              - lambda:InvokeFunction
+              - lambda:PublishVersion
+              - lambda:RemovePermission
+              - lambda:Update*
+            Resource:
+              - arn:aws:lambda:::function:*
+          - Sid: AllowLogGroupCreation
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:DeleteLogGroup
+            Resource:
+              - "*"
+          - Sid: AllowAPIGatewayCreation
+            Effect: Allow
+            Action:
+              - apigateway:GET
+              - apigateway:POST
+              - apigateway:PUT
+              - apigateway:DELETE
+              - apigateway:PATCH
+            Resource:
+              - arn:aws:apigateway:*::/apis*
+              - arn:aws:apigateway:*::/restapis*
+              - arn:aws:apigateway:*::/apikeys*
+              - arn:aws:apigateway:*::/usageplans
   # PermissionBoundary has an explicit deny all. The boundary sets the maximum set of permissions.
   PermissionBoundary:
     Type: AWS::IAM::ManagedPolicy
     Properties:
+      ManagedPolicyName: global-ci-serverless-permission-boundary
       PolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -117,7 +212,10 @@ Resources:
               - cloudformation:DescribeStackResources
               - cloudformation:DescribeStacks
               - cloudformation:GetTemplate
+              - cloudformation:ListStackResources
+              - cloudformation:UpdateStack
               - cloudformation:ValidateTemplate
+              - cloudformation:DeleteStack
             Resource:
               - "*"
             Condition:
@@ -125,6 +223,15 @@ Resources:
                 aws:RequestedRegion:
                   - us-east-1 # Allow North Virginia for CloudFront.
                   - eu-west-1 # Europe.
+          - Sid: AllowPassRoleToLambda
+            Effect: Allow
+            Action:
+              - iam:PassRole
+            Resource:
+              - arn:aws:iam:::role/*
+            #Condition:
+              #StringEquals:
+                #iam:PassedToService: lambda.amazonaws.com
           - Sid: ExplicitDenyPermBoundaryIAMPolicyAlteration
             Effect: Deny
             Action:
@@ -147,12 +254,71 @@ Resources:
             Effect: Allow
             Action:
               - iam:CreateRole
+              - iam:PutRolePolicy
               - iam:PutRolePermissionsBoundary
             Resource:
-              - arn:aws:iam:::role/*
+              - "*"
             Condition:
               StringEquals:
-                iam:PermissionsBoundary: arn:aws:iam:::policy/global-ci-serverless-permission-boundary
+                # The permission boundary needs to explitly provide the account.
+                iam:PermissionsBoundary: !Sub 'arn:aws:iam:${AWS::AccountId}:policy/global-ci-serverless-permission-boundary'
+          - Sid: AllowDeleteRole
+            Effect: Allow
+            Action:
+              - iam:DeleteRolePolicy
+              - iam:DeleteRole
+            Resource:
+              - "*"
+
+  # Instead of using Serverless Framework to create a bucket, create your own so that we can control the policy more carefully.
+  # This also reduces the number of buckets that are lying around.
+  # The serverless.yaml can be configured to use this by adding a provider/deploymentBucket section.
+  ServerlessDeploymentBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration: # Optional, can be used to reduce wasted storage if you don't need old versions to be retained.
+        Rules:
+          - AbortIncompleteMultipartUpload: # Abandon incomplete uploads after 7 days.
+              DaysAfterInitiation: 7
+            Status: Enabled
+          - NoncurrentVersionExpirationInDays: 7 # Delete old versions of files after 7 days. Think about whether this meets your audit requirements.
+            Status: Enabled
+      PublicAccessBlockConfiguration: # Disallow public buckets.
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration: # Enable versioning.
+        Status: Enabled
+  ServerlessDeploymentBucketPolicy: # Policy to disable non HTTPS access, and enforce MFA delete.
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ServerlessDeploymentBucket
+      PolicyDocument:
+        Statement:
+          - Sid: RequireTLS
+            Effect: Deny
+            Principal: "*"
+            Action: "*"
+            Resource:
+              !Join ["", ["arn:aws:s3:::", !Ref ServerlessDeploymentBucket]]
+            Condition:
+              Bool:
+                "aws:SecureTransport": false
+          - Sid: RequireMFAForBucketDeletion
+            Effect: Deny
+            Principal: "*"
+            Action:
+              - s3:DeleteBucket
+            Resource:
+              !Join ["", ["arn:aws:s3:::", !Ref ServerlessDeploymentBucket]]
+            Condition:
+              "Null":
+                "aws:MultiFactorAuthAge": true
 Outputs:
   UserName:
     Description: The username of the CI user.

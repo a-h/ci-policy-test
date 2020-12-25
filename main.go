@@ -56,14 +56,18 @@ func main() {
 	// aws iam simulate-principal-policy --action-names dynamodb:CreateBackup --policy-source-arn arn:aws:iam:::role/Administrator
 	// Now it's possible to test the actions that the entity can carry out.
 	p := NewPrincipal(iamSvc, callerIdentityARN)
-	p.CannotCreateUsers()
-	p.CannotLaunchEC2Instances()
-	p.CanLaunchStacksInIreland()
-	p.CanLaunchStacksInNorthVirginia()
-	p.CannotLaunchStacksOutsideIrelandAndNorthVirginia()
-	p.CannotReadDynamoDBData()
-	p.CannotModifyDynamoDBData()
-	p.CannotExecuteDynamoDBTransactions()
+	//p.CanCreateRoleWithBoundary()
+	//p.CannotCreateUsers()
+	//p.CannotLaunchEC2Instances()
+	//p.CanLaunchStacksInIreland()
+	//p.CanLaunchStacksInNorthVirginia()
+	//p.CannotLaunchStacksOutsideIrelandAndNorthVirginia()
+	//p.CanListS3Buckets()
+	//p.CannotReadDynamoDBData()
+	//p.CannotModifyDynamoDBData()
+	//p.CannotExecuteDynamoDBTransactions()
+	p.CanPassRoleToLambda()
+	p.CanDeleteRole()
 	success := p.Test()
 	if !success {
 		os.Exit(1)
@@ -121,6 +125,34 @@ func (p *Principal) runTest(t *Test) (passed bool, results []*iam.EvaluationResu
 	err = p.svc.SimulatePrincipalPolicyPages(t.Input, pager)
 	return
 }
+
+func (p *Principal) CanCreateRoleWithBoundary() {
+	testName := "CanCreateRoleWithBoundary"
+	input := &iam.SimulatePrincipalPolicyInput{
+		PolicySourceArn: p.callerIdentityARN,
+		ActionNames: aws.StringSlice([]string{
+			"iam:CreateRole",
+		}),
+		ContextEntries: []*iam.ContextEntry{
+			{
+				ContextKeyName:   aws.String("aws:RequestedRegion"),
+				ContextKeyType:   aws.String(iam.ContextKeyTypeEnumString),
+				ContextKeyValues: aws.StringSlice([]string{"eu-west-1"}),
+			},
+			{
+				ContextKeyName:   aws.String("iam:PermissionsBoundary"),
+				ContextKeyType:   aws.String(iam.ContextKeyTypeEnumString),
+				ContextKeyValues: aws.StringSlice([]string{"arn:aws:iam:::policy/global-ci-serverless-permission-boundary"}),
+			},
+		},
+	}
+	expected := Expected{
+		Allowed: true,
+	}
+	reason := `It must be possible to create a role for your Lambda functions, but they must be within the permission boundary.`
+	p.tests = append(p.tests, NewTest(testName, input, expected, reason))
+}
+
 func (p *Principal) CanSimulatePolicy() {
 	testName := "CanSimulatePolicy"
 	input := &iam.SimulatePrincipalPolicyInput{
@@ -265,6 +297,24 @@ func (p *Principal) CannotLaunchStacksOutsideIrelandAndNorthVirginia() {
 	p.tests = append(p.tests, NewTest(testName, input, expected, reason))
 }
 
+func (p *Principal) CanListS3Buckets() {
+	testName := "CanListS3Buckets"
+	input := &iam.SimulatePrincipalPolicyInput{
+		PolicySourceArn: p.callerIdentityARN,
+		ActionNames: aws.StringSlice([]string{
+			"s3api:List",
+		}),
+		ResourceArns: aws.StringSlice([]string{
+			"arn:aws:dynamodb:::*",
+		}),
+	}
+	expected := Expected{
+		Allowed: false,
+	}
+	reason := `CI pipelines should not be able to read data.`
+	p.tests = append(p.tests, NewTest(testName, input, expected, reason))
+}
+
 func (p *Principal) CannotReadDynamoDBData() {
 	testName := "CannotReadDynamoDBData"
 	input := &iam.SimulatePrincipalPolicyInput{
@@ -321,6 +371,43 @@ func (p *Principal) CannotExecuteDynamoDBTransactions() {
 		Allowed: false,
 	}
 	reason := `CI pipelines should not be able to read or modify data.`
+	p.tests = append(p.tests, NewTest(testName, input, expected, reason))
+}
+
+func (p *Principal) CanPassRoleToLambda() {
+	testName := "CanPassRoleToLambda"
+	input := &iam.SimulatePrincipalPolicyInput{
+		PolicySourceArn: p.callerIdentityARN,
+		ActionNames: aws.StringSlice([]string{
+			"iam:PassRole",
+		}),
+		ResourceArns: aws.StringSlice([]string{
+			"arn:aws:iam:::role/*",
+		}),
+	}
+	expected := Expected{
+		Allowed: true,
+	}
+	reason := `It must be possible to pass a role to the Lambda.`
+	p.tests = append(p.tests, NewTest(testName, input, expected, reason))
+}
+
+func (p *Principal) CanDeleteRole() {
+	testName := "CanDeleteRole"
+	input := &iam.SimulatePrincipalPolicyInput{
+		PolicySourceArn: p.callerIdentityARN,
+		ActionNames: aws.StringSlice([]string{
+			"iam:DeleteRole",
+			"iam:DeleteRolePolicy",
+		}),
+		ResourceArns: aws.StringSlice([]string{
+			"arn:aws:iam:::*",
+		}),
+	}
+	expected := Expected{
+		Allowed: true,
+	}
+	reason := `It must be possible to delete policies to roll back deployments.`
 	p.tests = append(p.tests, NewTest(testName, input, expected, reason))
 }
 
