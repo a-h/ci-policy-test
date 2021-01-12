@@ -1,0 +1,157 @@
+---
+# Per squad CI/CD user.
+# Naming standard: <squad>-<project-name>
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  Squad:
+    Type: String
+    Description: The name of the squad that this permission boundary is for. This ensures that each squad's CI user can only affect their own work.
+Resources:
+  User:
+    Type: AWS::IAM::User
+    Properties:
+      PermissionsBoundary: !ImportValue ServerlessPermissionBoundary
+  AllowPolicySimulatorPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Allows user of the IAM Policy Simulator.
+      Users:
+        - !Ref User
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: AllowIAMPolicySimulator
+            Effect: Allow
+            Action:
+              - iam:GetGroupPolicy
+              - iam:GetPolicy
+              - iam:GetPolicyVersion
+              - iam:GetUser
+              - iam:GetUserPolicy
+              - iam:ListAttachedUserPolicies
+              - iam:ListGroupPolicies
+              - iam:ListGroupsForUser
+              - iam:ListUserPolicies
+              - iam:ListUsers
+              - iam:ListPolicies
+              - iam:SimulatePrincipalPolicy
+            Resource:
+              - "*"
+  AllowServerlessCIPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Allows deployment of Serverless applications.
+      Users:
+        - !Ref User
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: AllowCloudFormationDeployment
+            Effect: Allow
+            Action:
+              - cloudformation:CreateStack
+              - cloudformation:DescribeStackEvents
+              - cloudformation:DescribeStackResources
+              - cloudformation:DescribeStacks
+              - cloudformation:GetTemplate
+              - cloudformation:ListStackResources
+              - cloudformation:UpdateStack
+              - cloudformation:ValidateTemplate
+              - cloudformation:DeleteStack
+            Resource: # Only allow user permission to modify their own namespace.
+              - !Sub arn:aws:cloudformation:::stack/${Squad}-*
+          - Sid: AllowS3ListBucketOnServerlessBucket
+            Effect: Allow
+            Action:
+              - s3:GetBucketLocation
+              - s3:CreateBucket
+              - s3:DeleteBucket
+              - s3:ListBucket
+              - s3:GetBucketPolicy
+              - s3:PutBucketPolicy
+              - s3:ListBucketVersions
+              - s3:PutAccelerateConfiguration
+              - s3:GetEncryptionConfiguration
+              - s3:PutEncryptionConfiguration
+              - s3:DeleteBucketPolic
+              - s3:ListBucket
+            Resource:
+              - Fn::Sub:
+                - arn:aws:s3:::${ServerlessDeploymentBucket}
+                - ServerlessDeploymentBucket: !ImportValue ServerlessDeploymentBucket
+          - Sid: AllowS3PutObjectOnServerlessBucket
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+            Resource:
+              - Fn::Sub: 
+                - arn:aws:s3:::${ServerlessDeploymentBucket}/${Squad}/*
+                - ServerlessDeploymentBucket: !ImportValue ServerlessDeploymentBucket
+                  Squad: ${Squad}
+          - Sid: AllowLambdaCreation
+            Effect: Allow
+            Action:
+              - lambda:Get*
+              - lambda:List*
+              - lambda:CreateFunction
+              - lambda:DeleteFunction
+            Resource:
+              - !Sub arn:aws:lambda:::function:${Squad}-*
+          - Sid: AllowLambdaIAMRoleCreation
+            Effect: Allow
+            Action:
+              - iam:GetRole
+              - iam:CreateRole
+              - iam:PutRolePolicy
+              - iam:DeleteRolePolicy
+              - iam:DeleteRole
+            Resource:
+              - !Sub arn:aws:iam:::role/${Squad}-*
+          - Sid: AllowPassRoleToLambda
+            Effect: Allow
+            Action:
+              - iam:PassRole
+            Resource:
+              - !Sub arn:aws:iam:::role/${Squad}-*
+            Condition:
+              StringEquals:
+                iam:PassedToService: lambda.amazonaws.com
+          - Sid: AllowAddPermission
+            Effect: Allow
+            Action:
+              - lambda:AddPermission
+              - lambda:CreateAlias
+              - lambda:DeleteFunction
+              - lambda:InvokeFunction
+              - lambda:PublishVersion
+              - lambda:RemovePermission
+              - lambda:Update*
+            Resource:
+              - !Sub arn:aws:lambda:::function:${Squad}-*
+          - Sid: AllowLogGroupCreation
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:DeleteLogGroup
+            Resource:
+              - "*"
+          - Sid: AllowAPIGatewayCreation # Unfortunately, the API Gateway ARNs just contain random strings, so it's hard to limit to just a specific squad name.
+            Effect: Allow
+            Action:
+              - apigateway:GET
+              - apigateway:POST
+              - apigateway:PUT
+              - apigateway:DELETE
+              - apigateway:PATCH
+            Resource:
+              - arn:aws:apigateway:*::/apis*
+              - arn:aws:apigateway:*::/restapis*
+              - arn:aws:apigateway:*::/apikeys*
+              - arn:aws:apigateway:*::/usageplans
+
+Outputs:
+  UserName:
+    Description: The username of the CI user.
+    Value: !Ref User

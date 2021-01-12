@@ -1,155 +1,12 @@
 ---
-# TODO: Take in parameters and remove all "*".
-# TODO: There shouldn't be a global CI boundary, we want to have a boundary per application team.
-# Naming standard: <application>-<environment>-<resource-name>
+# Global CI/CD permission boundary and Serverless deployment bucket per AWS account.
 AWSTemplateFormatVersion: "2010-09-09"
 Resources:
-  User:
-    Type: AWS::IAM::User
-    Properties:
-      PermissionsBoundary: !Ref PermissionBoundary
-  AllowPolicySimulatorPolicy:
-    Type: AWS::IAM::ManagedPolicy
-    Properties:
-      Description: Allows user of the IAM Policy Simulator.
-      Users:
-        - !Ref User
-      PolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Sid: AllowIAMPolicySimulator
-            Effect: Allow
-            Action:
-              - iam:GetGroupPolicy
-              - iam:GetPolicy
-              - iam:GetPolicyVersion
-              - iam:GetUser
-              - iam:GetUserPolicy
-              - iam:ListAttachedUserPolicies
-              - iam:ListGroupPolicies
-              - iam:ListGroupsForUser
-              - iam:ListUserPolicies
-              - iam:ListUsers
-              - iam:ListPolicies
-              - iam:SimulatePrincipalPolicy
-            Resource:
-              - "*"
-  AllowServerlessCIPolicy:
-    Type: AWS::IAM::ManagedPolicy
-    Properties:
-      Description: Allows deployment of Serverless applications.
-      Users:
-        - !Ref User
-      PolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Sid: AllowCloudFormationDeployment
-            Effect: Allow
-            Action:
-              - cloudformation:CreateStack
-              - cloudformation:DescribeStackEvents
-              - cloudformation:DescribeStackResources
-              - cloudformation:DescribeStacks
-              - cloudformation:GetTemplate
-              - cloudformation:ListStackResources
-              - cloudformation:UpdateStack
-              - cloudformation:ValidateTemplate
-              - cloudformation:DeleteStack
-            Resource:
-              - "*"
-          - Sid: AllowS3ListBucketOnServerlessBucket
-            Effect: Allow
-            Action:
-              - s3:GetBucketLocation
-              - s3:CreateBucket
-              - s3:DeleteBucket
-              - s3:ListBucket
-              - s3:GetBucketPolicy
-              - s3:PutBucketPolicy
-              - s3:ListBucketVersions
-              - s3:PutAccelerateConfiguration
-              - s3:GetEncryptionConfiguration
-              - s3:PutEncryptionConfiguration
-              - s3:DeleteBucketPolic
-              - s3:ListBucket
-            Resource:
-              - !Join ["", ["arn:aws:s3:::", !Ref ServerlessDeploymentBucket]]
-          - Sid: AllowS3PutObjectOnServerlessBucket
-            Effect: Allow
-            Action:
-              - s3:PutObject
-              - s3:GetObject
-            Resource:
-              - !Join [
-                  "",
-                  ["arn:aws:s3:::", !Ref ServerlessDeploymentBucket, "/*"],
-                ]
-          - Sid: AllowLambdaCreation
-            Effect: Allow
-            Action:
-              - lambda:Get*
-              - lambda:List*
-              - lambda:CreateFunction
-              - lambda:DeleteFunction
-            Resource:
-              - "*"
-          - Sid: AllowLambdaIAMRoleCreation
-            Effect: Allow
-            Action:
-              - iam:GetRole
-              - iam:CreateRole
-              - iam:PutRolePolicy
-              - iam:DeleteRolePolicy
-              - iam:DeleteRole
-            Resource:
-              - "*" #TODO: Update this to be reduced to the Lambda role.
-          - Sid: AllowPassRoleToLambda
-            Effect: Allow
-            Action:
-              - iam:PassRole
-            Resource:
-              - arn:aws:iam:::role/*
-            #Condition:
-              #StringEquals:
-                #iam:PassedToService: lambda.amazonaws.com
-          - Sid: AllowAddPermission
-            Effect: Allow
-            Action:
-              - lambda:AddPermission
-              - lambda:CreateAlias
-              - lambda:DeleteFunction
-              - lambda:InvokeFunction
-              - lambda:PublishVersion
-              - lambda:RemovePermission
-              - lambda:Update*
-            Resource:
-              - arn:aws:lambda:::function:*
-          - Sid: AllowLogGroupCreation
-            Effect: Allow
-            Action:
-              - logs:CreateLogGroup
-              - logs:CreateLogStream
-              - logs:DeleteLogGroup
-            Resource:
-              - "*"
-          - Sid: AllowAPIGatewayCreation
-            Effect: Allow
-            Action:
-              - apigateway:GET
-              - apigateway:POST
-              - apigateway:PUT
-              - apigateway:DELETE
-              - apigateway:PATCH
-            Resource:
-              - arn:aws:apigateway:*::/apis*
-              - arn:aws:apigateway:*::/restapis*
-              - arn:aws:apigateway:*::/apikeys*
-              - arn:aws:apigateway:*::/usageplans
   # PermissionBoundary has an explicit deny all. The boundary sets the maximum set of permissions.
-  PermissionBoundary:
+  ServerlessPermissionBoundary:
     Type: AWS::IAM::ManagedPolicy
     Properties:
-      ManagedPolicyName: global-ci-serverless-permission-boundary
+      ManagedPolicyName: serverless-permission-boundary
       PolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -229,9 +86,9 @@ Resources:
               - iam:PassRole
             Resource:
               - arn:aws:iam:::role/*
-            #Condition:
-              #StringEquals:
-                #iam:PassedToService: lambda.amazonaws.com
+            Condition:
+              StringEquals:
+                iam:PassedToService: lambda.amazonaws.com
           - Sid: ExplicitDenyPermBoundaryIAMPolicyAlteration
             Effect: Deny
             Action:
@@ -261,7 +118,7 @@ Resources:
             Condition:
               StringEquals:
                 # The permission boundary needs to explitly provide the account.
-                iam:PermissionsBoundary: !Sub 'arn:aws:iam:${AWS::AccountId}:policy/global-ci-serverless-permission-boundary'
+                iam:PermissionsBoundary: !Sub "arn:aws:iam:${AWS::AccountId}:policy/global-ci-serverless-permission-boundary"
           - Sid: AllowDeleteRole
             Effect: Allow
             Action:
@@ -319,7 +176,15 @@ Resources:
             Condition:
               "Null":
                 "aws:MultiFactorAuthAge": true
+
 Outputs:
-  UserName:
-    Description: The username of the CI user.
-    Value: !Ref User
+  ServerlessPermissionBoundary:
+    Description: The global CI permission boundary.
+    Value: !Ref ServerlessPermissionBoundary
+    Export:
+        Name: ServerlessPermissionBoundary
+  ServerlessDeploymentBucket:
+    Description: The global CI permission boundary.
+    Value: !Ref ServerlessDeploymentBucket
+    Export:
+        Name: ServerlessDeploymentBucket
