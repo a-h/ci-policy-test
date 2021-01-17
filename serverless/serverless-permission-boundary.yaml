@@ -97,7 +97,7 @@ Resources:
               - iam:DeletePolicyVersion
               - iam:SetDefaultPolicyVersion
             Resource:
-              - arn:aws:iam:::policy/global-ci-serverless-permission-boundary
+              - arn:aws:iam:::policy/serverless-permission-boundary
           - Sid: ExplicitDenyRemovalOfPermBoundaryFromAnyRole
             Effect: Deny
             Action:
@@ -106,7 +106,7 @@ Resources:
               - arn:aws:iam:::role/*
             Condition:
               StringEquals:
-                iam:PermissionsBoundary: arn:aws:iam:::policy/global-ci-serverless-permission-boundary
+                iam:PermissionsBoundary: arn:aws:iam:::policy/serverless-permission-boundary
           - Sid: AllowUpsertRoleIfPermBoundaryIsBeingApplied
             Effect: Allow
             Action:
@@ -118,7 +118,7 @@ Resources:
             Condition:
               StringEquals:
                 # The permission boundary needs to explitly provide the account.
-                iam:PermissionsBoundary: !Sub "arn:aws:iam:${AWS::AccountId}:policy/global-ci-serverless-permission-boundary"
+                iam:PermissionsBoundary: !Sub "arn:aws:iam:${AWS::AccountId}:policy/serverless-permission-boundary"
           - Sid: AllowDeleteRole
             Effect: Allow
             Action:
