@@ -1,4 +1,3 @@
-# action.yml
 name: 'CI Policy Test'
 description: 'Check the effectiveness of permission boundaries on your CI users.'
 inputs:
