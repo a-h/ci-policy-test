@@ -2,11 +2,11 @@
 name: 'CI Policy Test'
 description: 'Check the effectiveness of permission boundaries on your CI users.'
 inputs:
-  AWS_ACCESS_KEY_ID:  # pass from github secrets
+  AWS_ACCESS_KEY_ID:  # pass from github secrets (organization/repository level)
     description: 'AWS Access Key ID of IAM user.'
     required: true
     default: ''
-  AWS_SECRET_ACCESS_KEY:  # pass from github secrets
+  AWS_SECRET_ACCESS_KEY:  # pass from github secrets (organization/repository level)
     description: 'AWS Secret Key of IAM user.'
     required: true
     default: ''
