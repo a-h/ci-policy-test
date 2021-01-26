@@ -1,4 +1,5 @@
 name: 'CI Policy Test'
+author: 'Infinity Works'
 description: 'Check the effectiveness of permission boundaries on your CI users.'
 inputs:
   AWS_ACCESS_KEY_ID:  # pass from github secrets (organization/repository level)
