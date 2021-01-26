@@ -1,0 +1,18 @@
+# action.yml
+name: 'CI Policy Test'
+description: 'Check the effectiveness of permission boundaries on your CI users.'
+inputs:
+  AWS_ACCESS_KEY_ID:  # pass from github secrets
+    description: 'AWS Access Key ID of IAM user.'
+    required: true
+    default: ''
+  AWS_SECRET_ACCESS_KEY:  # pass from github secrets
+    description: 'AWS Secret Key of IAM user.'
+    required: true
+    default: ''
+runs:
+  using: 'docker'
+  image: 'Dockerfile'
+  args:
+    - ${{ inputs.AWS_ACCESS_KEY_ID }}
+    - ${{ inputs.AWS_SECRET_ACCESS_KEY }}
