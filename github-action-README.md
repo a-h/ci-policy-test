@@ -14,7 +14,9 @@ This action uses AWS credentials supplied from the Github organisation or reposi
 
 ## Example usage
 
+```yaml
 uses: actions/ci-policy-test-action@v1
 with:
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_DEV_CI_USER_ACCESS_KEY }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_DEV_CI_USER_SECRET }}
+```
