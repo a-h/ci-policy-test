@@ -8,6 +8,8 @@ This action uses AWS credentials supplied from the Github organisation or reposi
 
 **Required** AWS_ACCESS_KEY_ID. Reference the variable in your repo or organisation, whatever you've called it. Default `''`.
 
+### `AWS_SECRET_ACCESS_KEY`
+
 **Required** AWS_SECRET_ACCESS_KEY. Reference the secret, whatever you've called it. Default `''`.
 
 ## Example usage
