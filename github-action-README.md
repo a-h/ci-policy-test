@@ -1,4 +1,4 @@
-# CI Policy Test docker action
+# CI Policy Test - Github Action
 
 This action uses AWS credentials supplied from the Github organisation or repository level to run the tests in a CI pipeline.
 
