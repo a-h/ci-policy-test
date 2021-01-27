@@ -76,6 +76,33 @@ func (p *Principal) CannotLaunchEC2Instances() {
 
 I chose Go to write it in so that it can be built to run without dependenices, to make it easier to drop into a CI/CD pipeline, or run on any box (Linux, Mac, Windows).
 
+## Github Action
+
+This action uses AWS credentials supplied from the Github organisation or repository level to run the tests in a CI pipeline.
+
+### Inputs
+
+#### `AWS_ACCESS_KEY_ID`
+
+**Required** AWS_ACCESS_KEY_ID. Reference the variable in your repo or organisation, whatever you've called it. Default `''`.
+
+#### `AWS_SECRET_ACCESS_KEY`
+
+**Required** AWS_SECRET_ACCESS_KEY. Reference the secret, whatever you've called it. Default `''`.
+
+### Example usage
+
+```yaml
+jobs:
+  ci-policy-test:
+    name: CI Policy Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: a-h/ci-policy-test@v1
+        with:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_DEV_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_DEV_ACCESS_SECRET }}
+```
 ## Next steps
 
 I've made the permission boundary opinionated, in that each squad must create resources that have their squad prefix in it. The permission boundary could be made to be a squad level one, but, I think it might be overkill.
