@@ -6,4 +6,4 @@ WORKDIR /
 
 RUN go get && go build
 
-CMD ["go", "run", "/main.go"]
+ENTRYPOINT [ "/entrypoint.sh" ]
