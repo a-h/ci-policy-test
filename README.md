@@ -98,7 +98,7 @@ jobs:
     name: CI Policy Test
     runs-on: ubuntu-latest
     steps:
-      - uses: a-h/ci-policy-test@v1
+      - uses: a-h/ci-policy-test@v3
         with:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_DEV_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_DEV_ACCESS_SECRET }}
