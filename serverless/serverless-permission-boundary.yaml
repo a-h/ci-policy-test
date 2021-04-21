@@ -36,12 +36,12 @@ Resources:
               - ec2:CreateNetworkInterface
               - ec2:DeleteNetworkInterface
               - ec2:Describe* 
-              # Other services to consider and write more granular restrictions for.
-              # - schemas:*
-              # - sns:*
-              # - sqs:*
-              # - kms:*
-              # - synthetics:*
+              # You might want to consider limiting squads to more granular restrictions for these services at the permission boundary level, depending on your use case.
+              - schemas:*
+              - sns:*
+              - sqs:*
+              - kms:*
+              - synthetics:*
             Resource:
               - "*"
             Condition:
