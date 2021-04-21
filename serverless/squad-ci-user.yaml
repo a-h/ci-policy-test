@@ -51,6 +51,7 @@ Resources:
             Action:
               - cloudformation:CreateStack
               - cloudformation:DescribeStackEvents
+              - cloudformation:DescribeStackResource
               - cloudformation:DescribeStackResources
               - cloudformation:DescribeStacks
               - cloudformation:GetTemplate
@@ -59,7 +60,13 @@ Resources:
               - cloudformation:ValidateTemplate
               - cloudformation:DeleteStack
             Resource: # Only allow user permission to modify their own namespace.
-              - !Sub arn:aws:cloudformation:::stack/${Squad}-*
+              - !Sub arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${Squad}-*
+          - Sid: AllowCloudformationValidationOnEverything
+            Effect: Allow
+            Action:
+              - cloudformation:ValidateTemplate
+            Resource:
+              - "*"              
           - Sid: AllowS3ListBucketOnServerlessBucket
             Effect: Allow
             Action:
@@ -77,7 +84,7 @@ Resources:
               - s3:ListBucket
             Resource:
               - Fn::Sub:
-                - arn:aws:s3:::${ServerlessDeploymentBucket}
+                - arn:aws:s3:*:*:${ServerlessDeploymentBucket}
                 - ServerlessDeploymentBucket: !ImportValue ServerlessDeploymentBucket
           - Sid: AllowS3PutObjectOnServerlessBucket
             Effect: Allow
@@ -97,7 +104,7 @@ Resources:
               - lambda:CreateFunction
               - lambda:DeleteFunction
             Resource:
-              - !Sub arn:aws:lambda:::function:${Squad}-*
+              - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${Squad}-*       
           - Sid: AllowLambdaIAMRoleCreation
             Effect: Allow
             Action:
@@ -107,13 +114,19 @@ Resources:
               - iam:DeleteRolePolicy
               - iam:DeleteRole
             Resource:
-              - !Sub arn:aws:iam:::role/${Squad}-*
+              - !Sub arn:aws:iam::${AWS::AccountId}:role/${Squad}-*
+          - Sid: AllowAnyGetRole
+            Effect: Allow
+            Action:
+              - iam:GetRole
+            Resource:
+              - "*"              
           - Sid: AllowPassRoleToLambda
             Effect: Allow
             Action:
               - iam:PassRole
             Resource:
-              - !Sub arn:aws:iam:::role/${Squad}-*
+              - !Sub arn:aws:iam::${AWS::AccountId}:role/${Squad}-*
             Condition:
               StringEquals:
                 iam:PassedToService: lambda.amazonaws.com
@@ -128,7 +141,7 @@ Resources:
               - lambda:RemovePermission
               - lambda:Update*
             Resource:
-              - !Sub arn:aws:lambda:::function:${Squad}-*
+              - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${Squad}-*
           - Sid: AllowLogGroupCreation
             Effect: Allow
             Action:
@@ -150,6 +163,17 @@ Resources:
               - arn:aws:apigateway:*::/restapis*
               - arn:aws:apigateway:*::/apikeys*
               - arn:aws:apigateway:*::/usageplans
+              - arn:aws:apigateway:*::/tags*
+          - Sid: AllowCloudWatchEvents 
+            Effect: Allow
+            Action:
+              - events:PutRule
+              - events:DescribeRule
+              - events:PutTargets
+              - events:EnableRule
+              - events:TestEventPattern
+            Resource:
+              - !Sub arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/${Squad}-*              
 
 Outputs:
   UserName:
