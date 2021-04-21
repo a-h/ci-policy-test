@@ -1,6 +1,10 @@
 ---
 # Global CI/CD permission boundary and Serverless deployment bucket per AWS account.
 AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  Squad:
+    Type: String
+    Description: The name of the squad that this permission boundary is for. This ensures that each squad's CI user can only affect their own work.
 Resources:
   # PermissionBoundary has an explicit deny all. The boundary sets the maximum set of permissions.
   ServerlessPermissionBoundary:
@@ -18,35 +22,63 @@ Resources:
               - iam:SimulatePrincipalPolicy
             Resource:
               - "*"
+          # These are for serverless services that need a * in resources as we do not know
+          # the exact path of in advance e.g. api gateway. 
           - Sid: AllowServerlessServices
             Effect: Allow
             Action:
               - apigateway:*
               - cloudwatch:*
-              - cognito-idp:*
-              - dynamodb:*
+              - events:*
+              - logs:*
+              - states:*
+              - xray:*
               - ec2:CreateNetworkInterface
               - ec2:DeleteNetworkInterface
-              - ec2:Describe*
-              - events:*
-              - kms:*
-              - lambda:*
-              - logs:*
-              - s3:*
-              - schemas:*
-              - sns:*
-              - sqs:*
-              - ssm:*
-              - states:*
-              - synthetics:*
-              - xray:*
+              - ec2:Describe* 
+              # Other services to consider and write more granular restrictions for.
+              # - schemas:*
+              # - sns:*
+              # - sqs:*
+              # - kms:*
+              # - synthetics:*
             Resource:
               - "*"
             Condition:
               StringEquals:
                 aws:RequestedRegion:
                   - us-east-1 # Allow North Virginia for CloudFront.
-                  - eu-west-1 # Europe.
+                  - eu-west-2 # Europe.              
+          - Sid: AllowS3
+            Effect: Allow 
+            Action: 
+              - s3:*
+            Resource: 
+              - !Sub arn:aws:s3:::${Squad}*
+          - Sid: AllowLambda
+            Effect: Allow 
+            Action: 
+              - lambda:*
+            Resource: 
+              - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${Squad}*              
+          - Sid: AllowDynamo
+            Effect: Allow 
+            Action: 
+              - dynamodb:*
+            Resource: 
+              - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${Squad}*   
+          - Sid: AllowSecretsManagerGetOnly
+            Effect: Allow 
+            Action: 
+              - secretsmanager:GetSecretValue
+            Resource: 
+              - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Squad}*                          
+          - Sid: AllowSSMParameters
+            Effect: Allow 
+            Action: 
+              - ssm:*
+            Resource: 
+              - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter:${Squad}*                                
           - Sid: DenyDynamoRowLevelActions
             Effect: Deny
             Action:
@@ -67,6 +99,7 @@ Resources:
               - cloudformation:CreateStack
               - cloudformation:DescribeStackEvents
               - cloudformation:DescribeStackResources
+              - cloudformation:DescribeStackResource
               - cloudformation:DescribeStacks
               - cloudformation:GetTemplate
               - cloudformation:ListStackResources
@@ -74,18 +107,28 @@ Resources:
               - cloudformation:ValidateTemplate
               - cloudformation:DeleteStack
             Resource:
-              - "*"
+              - !Sub arn:aws:cloudformation:*:${AWS::AccountId}:stack/${Squad}-*
             Condition:
               StringEquals:
                 aws:RequestedRegion:
                   - us-east-1 # Allow North Virginia for CloudFront.
                   - eu-west-1 # Europe.
+          - Sid: AllowValidationOfAnyStack
+            Effect: Allow
+            Action:
+              - cloudformation:ValidateTemplate
+            Resource:
+              - "*"
+            Condition:
+              StringEquals:
+                aws:RequestedRegion:
+                  - eu-west-2 # Europe.                                
           - Sid: AllowPassRoleToLambda
             Effect: Allow
             Action:
               - iam:PassRole
             Resource:
-              - arn:aws:iam:::role/*
+              - !Sub arn:aws:iam::${AWS::AccountId}:role/${Squad}*
             Condition:
               StringEquals:
                 iam:PassedToService: lambda.amazonaws.com
@@ -97,7 +140,7 @@ Resources:
               - iam:DeletePolicyVersion
               - iam:SetDefaultPolicyVersion
             Resource:
-              - arn:aws:iam:::policy/serverless-permission-boundary
+              - !Sub arn:aws:iam::${AWS::AccountId}:policy/${Squad}-permissions-boundary
           - Sid: ExplicitDenyRemovalOfPermBoundaryFromAnyRole
             Effect: Deny
             Action:
@@ -106,7 +149,7 @@ Resources:
               - arn:aws:iam:::role/*
             Condition:
               StringEquals:
-                iam:PermissionsBoundary: arn:aws:iam:::policy/serverless-permission-boundary
+                iam:PermissionsBoundary: !Sub arn:aws:iam::${AWS::AccountId}:policy/${Squad}-permissions-boundary
           - Sid: AllowUpsertRoleIfPermBoundaryIsBeingApplied
             Effect: Allow
             Action:
@@ -114,18 +157,19 @@ Resources:
               - iam:PutRolePolicy
               - iam:PutRolePermissionsBoundary
             Resource:
-              - "*"
+              - !Sub arn:aws:iam::${AWS::AccountId}:policy/${Squad}-*
+              - !Sub arn:aws:iam::${AWS::AccountId}:role/${Squad}-*
             Condition:
               StringEquals:
-                # The permission boundary needs to explitly provide the account.
-                iam:PermissionsBoundary: !Sub "arn:aws:iam:${AWS::AccountId}:policy/serverless-permission-boundary"
+                # The permission boundary needs to explicitly provide the account.
+                iam:PermissionsBoundary: !Sub arn:aws:iam::${AWS::AccountId}:policy/${Squad}-permissions-boundary
           - Sid: AllowDeleteRole
             Effect: Allow
             Action:
               - iam:DeleteRolePolicy
               - iam:DeleteRole
             Resource:
-              - "*"
+              - !Sub arn:aws:iam::${AWS::AccountId}:role/${Squad}-*
 
   # Instead of using Serverless Framework to create a bucket, create your own so that we can control the policy more carefully.
   # This also reduces the number of buckets that are lying around.
