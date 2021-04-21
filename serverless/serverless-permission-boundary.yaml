@@ -122,7 +122,7 @@ Resources:
             Condition:
               StringEquals:
                 aws:RequestedRegion:
-                  - eu-west-2 # Europe.                                
+                  - eu-west-1 # Europe.
           - Sid: AllowPassRoleToLambda
             Effect: Allow
             Action:
