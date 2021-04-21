@@ -48,7 +48,7 @@ Resources:
               StringEquals:
                 aws:RequestedRegion:
                   - us-east-1 # Allow North Virginia for CloudFront.
-                  - eu-west-2 # Europe.              
+                  - eu-west-1 # Europe.              
           - Sid: AllowS3
             Effect: Allow 
             Action: 
